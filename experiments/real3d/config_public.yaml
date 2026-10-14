@@ -1,0 +1,122 @@
+# Public Real3D-AD configuration for the independent SeDiR reproduction.
+# Fill in the empty paths before training or evaluation.
+version: v1.0.0
+random_seed: 42
+port: 11112
+
+dataset:
+  type: custom
+  # Path to downsampled training templates; keep the directory name real3D_down.
+  data_dir: &dataset_root "" # Fill in your own path.
+  train:
+    meta_file: ../../data/Real3D/train.json
+  test:
+    meta_file: ../../data/Real3D/test.json
+  batch_size: 1
+  workers: 1
+
+# The reconstruction module computes all four SeDiR loss terms.
+criterion: []
+
+trainer:
+  max_epoch: 1000
+  clip_max_norm: 0.1
+  val_freq_epoch: 100
+  print_freq_step: 1
+  tb_freq_step: 1
+  lr_scheduler:
+    type: CosineAnnealingLR
+    kwargs:
+      T_max: 1000
+      eta_min: 0.0
+  optimizer:
+    type: AdamW
+    kwargs:
+      lr: 0.0001
+      betas: [0.9, 0.999]
+      weight_decay: 0.0001
+
+saver:
+  auto_resume: false
+  always_save: false
+  resume_model: null
+  # Leave null for training; set a SeDiR checkpoint path for evaluation.
+  load_path: null # Fill in your own path for evaluation.
+  save_dir: checkpoints/
+  log_dir: log/
+
+evaluator:
+  save_dir: result/
+  key_metric: mean_obj-AUROC_auc
+  keep_eval_files: false
+  metrics:
+    auc:
+      - name: std
+      - name: max
+        kwargs:
+          avgpool_size: [16, 16]
+      - name: pixel
+  # Interpolate token scores to points, then smooth along the point sequence.
+  # The paper does not specify the unit of sigma=0.2; this reproduction uses
+  # 0.2 times the half-kernel size, giving sigma=51 for a 511-point kernel.
+  score_smoothing:
+    type: gaussian
+    kernel_size: 511
+    sigma: 51.0
+
+frozen_layers: [backbone]
+
+net:
+  - name: backbone
+    type: models.backbones.pointmae.pointmae.Model1
+    frozen: true
+    kwargs:
+      data_dir: *dataset_root
+      checkpoint_path: "" # Fill in your own Point-MAE checkpoint path.
+      group_size: 256
+      num_group: 1024
+      feature_layers: [3]
+      encoder_group_chunk: 64
+      use_registration: true
+      registration_voxel_size: 0.5
+      registration_seed: 0
+      allow_random_init: false
+
+  - name: reconstruction
+    prev: backbone
+    type: models.reconstructions.uniad.UniAD
+    frozen: false
+    kwargs:
+      inplanes: 384
+      feature_size: 1024
+      hidden_dim: 256
+      nhead: 8
+      num_encoder_layers: 4
+      num_decoder_layers: 4
+      dim_feedforward: 1024
+      dropout: 0.1
+      cls_num: 12
+      activation: relu
+      normalize_before: false
+      feature_jitter:
+        scale: 20.0
+        prob: 1.0
+      initializer:
+        method: xavier_uniform
+      z_dim: 256
+      queue_size: 64
+      temperature: 0.07
+      geometry_beta: 1.0
+      geometry_hidden_dim: 32
+      geometry_source: points
+      geometry_radius: null
+      k: 7
+      geometry_cache_size: 32
+      geometry_chunk_size: 256
+      gaussian_kernel_size: 511
+      gaussian_sigma: 0.2
+      gaussian_grid: index
+      score_normalization: none
+      lambda_scl: 0.001
+      lambda_cls: 0.001
+      lambda_cos: 0.01

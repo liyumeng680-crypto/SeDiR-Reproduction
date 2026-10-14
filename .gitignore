@@ -1,0 +1,22 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Generated training and evaluation outputs
+checkpoints/
+log/
+result/
+runs/
+*.pth
+*.pt
+*.ckpt
+
+# Local configuration and credentials
+.env
+.env.*
+*.pem
+*.key
+config_local.yaml
